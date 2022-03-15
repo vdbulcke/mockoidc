@@ -149,7 +149,8 @@ func (m *MockOIDC) Token(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !m.validateTokenParams(rw, req) {
+	// validate client_id and grant_type
+	if !m.validateMandatoryTokenParams(rw, req) {
 		return
 	}
 
@@ -160,13 +161,25 @@ func (m *MockOIDC) Token(rw http.ResponseWriter, req *http.Request) {
 	grantType := req.Form.Get("grant_type")
 	switch grantType {
 	case "authorization_code":
+		// get authz code from session store
 		if session, valid = m.validateCodeGrant(rw, req); !valid {
 			return
 		}
 
+		// if not PKCE
+		if session.CodeChallenge == "" || session.CodeChallengeMethod == "" {
+			// validate client_secret
+			if !m.validateClientSecret(rw, req) {
+				return
+			}
+
+		}
+
+		// if PKCE (this will return true if not PKCE)
 		if !m.validateCodeChallenge(rw, req, session) {
 			return
 		}
+
 	case "refresh_token":
 		if session, valid = m.validateRefreshGrant(rw, req); !valid {
 			return
@@ -208,6 +221,39 @@ func (m *MockOIDC) validateTokenParams(rw http.ResponseWriter, req *http.Request
 		return false
 	}
 	equal = assertEqual("client_secret", m.ClientSecret,
+		InvalidClient, "Invalid client secret", rw, req)
+	if !equal {
+		return false
+	}
+
+	return true
+}
+
+// validateMandatoryTokenParams mandatory paramaters
+// PKCE and refresh_token flow do NOT require a client_secret
+func (m *MockOIDC) validateMandatoryTokenParams(rw http.ResponseWriter, req *http.Request) bool {
+
+	if !assertPresence([]string{"client_id", "grant_type"}, rw, req) {
+		return false
+	}
+
+	equal := assertEqual("client_id", m.ClientID,
+		InvalidClient, "Invalid client id", rw, req)
+	if !equal {
+		return false
+	}
+
+	return true
+}
+
+// validateClientSecret  paramater
+func (m *MockOIDC) validateClientSecret(rw http.ResponseWriter, req *http.Request) bool {
+
+	if !assertPresence([]string{"client_secret"}, rw, req) {
+		return false
+	}
+
+	equal := assertEqual("client_secret", m.ClientSecret,
 		InvalidClient, "Invalid client secret", rw, req)
 	if !equal {
 		return false
