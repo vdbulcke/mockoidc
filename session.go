@@ -84,7 +84,15 @@ func (ss *SessionStore) GetSessionByToken(token *jwt.Token) (*Session, error) {
 // AccessToken returns the JWT token with the appropriate claims for
 // an access token
 func (s *Session) AccessToken(config *Config, kp *Keypair, now time.Time) (string, error) {
-	claims := s.standardClaims(config, config.AccessTTL, now)
+	// get standard claims
+	standardClaims := s.standardClaims(config, config.AccessTTL, now)
+
+	// add user specific Access token claims
+	claims, err := s.User.AccessTokenClaims(standardClaims)
+	if err != nil {
+		return "", err
+	}
+
 	return kp.SignJWT(claims)
 }
 

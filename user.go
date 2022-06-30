@@ -20,6 +20,10 @@ type User interface {
 	// Claims returns the ID Token Claims for a User with data appropriate for
 	// the passed scope []string. It builds off the passed BaseIDTokenClaims.
 	Claims([]string, *IDTokenClaims) (jwt.Claims, error)
+
+	// Claims returns the Access Token Claims for a User
+	// It builds off the passed StandardClaims.
+	AccessTokenClaims(*jwt.StandardClaims) (jwt.Claims, error)
 }
 
 // MockUser is a default implementation of the User interface
@@ -95,6 +99,11 @@ func (u *MockUser) Claims(scope []string, claims *IDTokenClaims) (jwt.Claims, er
 		Address:           user.Address,
 		Groups:            user.Groups,
 	}, nil
+}
+
+// AccessTokenClaims just return standard claims
+func (u *MockUser) AccessTokenClaims(claims *jwt.StandardClaims) (jwt.Claims, error) {
+	return claims, nil
 }
 
 func (u *MockUser) scopedClone(scopes []string) *MockUser {
