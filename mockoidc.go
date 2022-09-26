@@ -114,10 +114,13 @@ func (m *MockOIDC) Start(ln net.Listener, cfg *tls.Config) error {
 
 	handler := http.NewServeMux()
 	handler.Handle(AuthorizationEndpoint, m.chainMiddleware(m.Authorize))
+	handler.Handle(PushedAuthorizationRequestEndpoint, m.chainMiddleware(m.PAR))
 	handler.Handle(TokenEndpoint, m.chainMiddleware(m.Token))
 	handler.Handle(UserinfoEndpoint, m.chainMiddleware(m.Userinfo))
 	handler.Handle(JWKSEndpoint, m.chainMiddleware(m.JWKS))
 	handler.Handle(DiscoveryEndpoint, m.chainMiddleware(m.Discovery))
+
+	handler.Handle("/admin/clear/cache", m.chainMiddleware(m.AdminClearCache))
 
 	m.Server = &http.Server{
 		Addr:      ln.Addr().String(),
@@ -263,6 +266,20 @@ func (m *MockOIDC) AuthorizationEndpoint() string {
 	}
 
 	return m.Addr() + AuthorizationEndpoint
+}
+
+// PushedAuthorizationRequestEndpoint returns the OIDC `pushed_authorization_request_endpoint`
+func (m *MockOIDC) PushedAuthorizationRequestEndpoint() string {
+	if m.Server == nil {
+		return ""
+	}
+
+	// Generate the Issue from IssuerBaseUrl
+	if m.IssuerBaseUrl != "" {
+		return m.IssuerBaseUrl + PushedAuthorizationRequestEndpoint
+	}
+
+	return m.Addr() + PushedAuthorizationRequestEndpoint
 }
 
 // TokenEndpoint returns the OIDC `token_endpoint`

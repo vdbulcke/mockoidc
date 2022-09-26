@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	IssuerBase            = "/oidc"
-	AuthorizationEndpoint = "/oidc/authorize"
-	TokenEndpoint         = "/oidc/token"
-	UserinfoEndpoint      = "/oidc/userinfo"
-	JWKSEndpoint          = "/oidc/.well-known/jwks.json"
-	DiscoveryEndpoint     = "/oidc/.well-known/openid-configuration"
+	IssuerBase                         = "/oidc"
+	AuthorizationEndpoint              = "/oidc/authorize"
+	PushedAuthorizationRequestEndpoint = "/oidc/par"
+	TokenEndpoint                      = "/oidc/token"
+	UserinfoEndpoint                   = "/oidc/userinfo"
+	JWKSEndpoint                       = "/oidc/.well-known/jwks.json"
+	DiscoveryEndpoint                  = "/oidc/.well-known/openid-configuration"
 
 	InvalidRequest       = "invalid_request"
 	InvalidClient        = "invalid_client"
@@ -69,7 +70,62 @@ var (
 	}
 )
 
+// https://www.rfc-editor.org/rfc/rfc9126.html#section-2.2
+type PARResponse struct {
+	RequestUri string `json:"request_uri"`
+	ExpiresIn  int    `json:"expires_in"`
+}
+
+// PAR handles Pushed Authorization Request
+//     stores PAR request in session store for later use on
+//     the authorization endpoint
+// returns a request_uri and expiration
+func (m *MockOIDC) PAR(rw http.ResponseWriter, req *http.Request) {
+
+	// parse PAR request
+	body := req.Body
+	defer body.Close()
+
+	d := json.NewDecoder(body)
+	var parReq *PARSession
+	err := d.Decode(&parReq)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	// validate Request
+	if !m.validPARRequest(rw, parReq) {
+		return
+	}
+
+	reqID, err := m.SessionStore.StorePARRequest(parReq)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	parResp := &PARResponse{
+		RequestUri: reqID,
+		ExpiresIn:  120,
+	}
+
+	resp, err := json.Marshal(parResp)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	noCache(rw)
+	// PAR Response MUST be 201
+	jsonResponseWithStatusCode(rw, resp, http.StatusCreated)
+
+}
+
 // Authorize implements the `authorization_endpoint` in the OIDC flow.
+// if request_contains 'request_uri' then looks up PAR request from session store
+//    and ignores all other parameters
+// else handles all authorization parameters directly.
 // It is the initial request that "authenticates" a user in the OAuth2
 // flow and redirects the client to the application `redirect_uri`.
 func (m *MockOIDC) Authorize(rw http.ResponseWriter, req *http.Request) {
@@ -79,49 +135,84 @@ func (m *MockOIDC) Authorize(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	valid := assertPresence(
-		[]string{"scope", "state", "client_id", "response_type", "redirect_uri"}, rw, req)
-	if !valid {
-		return
-	}
+	var nonce, scope, state, redirect_uri, codeChallenge, codeChallengeMethod string
 
-	if !validateScope(rw, req) {
-		return
-	}
-	validClient := assertEqual("client_id", m.ClientID,
-		InvalidClient, "Invalid client id", rw, req)
-	if !validClient {
-		return
-	}
-	validType := assertEqual("response_type", "code",
-		UnsupportedGrantType, "Invalid response type", rw, req)
-	if !validType {
-		return
-	}
-	if !validateCodeChallengeMethodSupported(rw, req.Form.Get("code_challenge_method"), m.CodeChallengeMethodsSupported) {
-		return
+	// if PAR
+	if req.Form.Get("request_uri") != "" {
+		// mandatory client_id ?
+		// validClient := assertEqual("client_id", m.ClientID,
+		// 	InvalidClient, "Invalid client id", rw, req)
+		// if !validClient {
+		// 	return
+		// }
+
+		// get PAR request from store
+		parReq, err := m.SessionStore.GetPARRequestByID(req.Form.Get("request_uri"))
+		if err != nil {
+			internalServerError(rw, err.Error())
+			return
+		}
+
+		scope = parReq.Scopes
+		nonce = parReq.Nonce
+		state = parReq.State
+		codeChallenge = parReq.CodeChallenge
+		codeChallengeMethod = parReq.CodeChallengeMethod
+		redirect_uri = parReq.RedirectURI
+
+	} else {
+		valid := assertPresence(
+			[]string{"scope", "state", "client_id", "response_type", "redirect_uri"}, rw, req)
+		if !valid {
+			return
+		}
+
+		if !validateScope(rw, req) {
+			return
+		}
+		validClient := assertEqual("client_id", m.ClientID,
+			InvalidClient, "Invalid client id", rw, req)
+		if !validClient {
+			return
+		}
+		validType := assertEqual("response_type", "code",
+			UnsupportedGrantType, "Invalid response type", rw, req)
+		if !validType {
+			return
+		}
+		if !validateCodeChallengeMethodSupported(rw, req.Form.Get("code_challenge_method"), m.CodeChallengeMethodsSupported) {
+			return
+		}
+
+		scope = req.Form.Get("scope")
+		nonce = req.Form.Get("nonce")
+		state = req.Form.Get("state")
+		codeChallenge = req.Form.Get("code_challenge")
+		codeChallengeMethod = req.Form.Get("code_challenge_method")
+		redirect_uri = req.Form.Get("redirect_uri")
+
 	}
 
 	session, err := m.SessionStore.NewSession(
-		req.Form.Get("scope"),
-		req.Form.Get("nonce"),
+		scope,
+		nonce,
 		m.UserQueue.Pop(),
-		req.Form.Get("code_challenge"),
-		req.Form.Get("code_challenge_method"),
+		codeChallenge,
+		codeChallengeMethod,
 	)
 	if err != nil {
 		internalServerError(rw, err.Error())
 		return
 	}
 
-	redirectURI, err := url.Parse(req.Form.Get("redirect_uri"))
+	redirectURI, err := url.Parse(redirect_uri)
 	if err != nil {
 		internalServerError(rw, err.Error())
 		return
 	}
 	params, _ := url.ParseQuery(redirectURI.RawQuery)
 	params.Set("code", session.SessionID)
-	params.Set("state", req.Form.Get("state"))
+	params.Set("state", state)
 	redirectURI.RawQuery = params.Encode()
 
 	http.Redirect(rw, req, redirectURI.String(), http.StatusFound)
@@ -210,6 +301,13 @@ func (m *MockOIDC) Token(rw http.ResponseWriter, req *http.Request) {
 	jsonResponse(rw, resp)
 }
 
+func (m *MockOIDC) AdminClearCache(rw http.ResponseWriter, req *http.Request) {
+	m.SessionStore.ClearCache()
+	rw.Header().Set("X-Status", "cache-cleared")
+	rw.WriteHeader(http.StatusOK)
+
+}
+
 func (m *MockOIDC) validateTokenParams(rw http.ResponseWriter, req *http.Request) bool {
 	if !assertPresence([]string{"client_id", "client_secret", "grant_type"}, rw, req) {
 		return false
@@ -257,6 +355,54 @@ func (m *MockOIDC) validateClientSecret(rw http.ResponseWriter, req *http.Reques
 		InvalidClient, "Invalid client secret", rw, req)
 	if !equal {
 		return false
+	}
+
+	return true
+}
+
+// validPARRequest
+func (m *MockOIDC) validPARRequest(rw http.ResponseWriter, req *PARSession) bool {
+
+	mandatoryParam := []string{"client_id", "client_secret", "response_type", "redirect_uri", "scopes", "nonce", "state"}
+	parMap := req.toMap()
+	for _, p := range mandatoryParam {
+		if _, ok := parMap[p]; !ok {
+			errorResponse(rw, InvalidRequest, fmt.Sprintf("missing mandatory parameter %s", p), http.StatusUnauthorized)
+			return false
+		}
+
+	}
+
+	// validate Auth
+	if m.ClientID != req.ClientID || m.ClientSecret != req.ClientSecret {
+		errorResponse(rw, InvalidRequest, "wrong client_id/client_secret", http.StatusUnauthorized)
+		return false
+	}
+
+	// validate scopes
+	if !validateScopeParam(rw, req.Scopes) {
+		return false
+	}
+
+	// PKCE
+	if req.CodeChallenge != "" {
+		if req.CodeChallengeMethod == "" {
+			errorResponse(rw, InvalidRequest, fmt.Sprintf("missing mandatory parameter '%s' with  'code_challenge'", "code_challenge_method"), http.StatusUnauthorized)
+			return false
+		}
+
+		validMethod := false
+		for _, supportedMethod := range m.CodeChallengeMethodsSupported {
+			if req.CodeChallengeMethod == supportedMethod {
+				validMethod = true
+			}
+		}
+
+		if !validMethod {
+			errorResponse(rw, InvalidRequest, fmt.Sprintf("Unsupported 'code_challenge_method' '%s'", req.CodeChallengeMethod), http.StatusUnauthorized)
+			return false
+		}
+
 	}
 
 	return true
@@ -382,9 +528,11 @@ func (m *MockOIDC) Userinfo(rw http.ResponseWriter, req *http.Request) {
 type discoveryResponse struct {
 	Issuer                string `json:"issuer"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-	JWKSUri               string `json:"jwks_uri"`
-	UserinfoEndpoint      string `json:"userinfo_endpoint"`
+	// https://www.rfc-editor.org/rfc/rfc9126.html#name-authorization-server-metada
+	PushedAuthorizationRequestEndpoint string `json:"pushed_authorization_request_endpoint"  `
+	TokenEndpoint                      string `json:"token_endpoint"`
+	JWKSUri                            string `json:"jwks_uri"`
+	UserinfoEndpoint                   string `json:"userinfo_endpoint"`
 
 	GrantTypesSupported               []string `json:"grant_types_supported"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
@@ -400,11 +548,12 @@ type discoveryResponse struct {
 // server metadata hosted at `/.well-known/openid-configuration`.
 func (m *MockOIDC) Discovery(rw http.ResponseWriter, _ *http.Request) {
 	discovery := &discoveryResponse{
-		Issuer:                m.Issuer(),
-		AuthorizationEndpoint: m.AuthorizationEndpoint(),
-		TokenEndpoint:         m.TokenEndpoint(),
-		JWKSUri:               m.JWKSEndpoint(),
-		UserinfoEndpoint:      m.UserinfoEndpoint(),
+		Issuer:                             m.Issuer(),
+		AuthorizationEndpoint:              m.AuthorizationEndpoint(),
+		TokenEndpoint:                      m.TokenEndpoint(),
+		JWKSUri:                            m.JWKSEndpoint(),
+		UserinfoEndpoint:                   m.UserinfoEndpoint(),
+		PushedAuthorizationRequestEndpoint: m.PushedAuthorizationRequestEndpoint(),
 
 		GrantTypesSupported:               GrantTypesSupported,
 		ResponseTypesSupported:            ResponseTypesSupported,
@@ -515,6 +664,23 @@ func validateScope(rw http.ResponseWriter, req *http.Request) bool {
 	return true
 }
 
+func validateScopeParam(rw http.ResponseWriter, requestedScope string) bool {
+	allowed := make(map[string]struct{})
+	for _, scope := range ScopesSupported {
+		allowed[scope] = struct{}{}
+	}
+
+	scopes := strings.Split(requestedScope, " ")
+	for _, scope := range scopes {
+		if _, ok := allowed[scope]; !ok {
+			errorResponse(rw, InvalidScope, fmt.Sprintf("Unsupported scope: %s, must be one of %s", scope, ScopesSupported),
+				http.StatusBadRequest)
+			return false
+		}
+	}
+	return true
+}
+
 func validateCodeChallengeMethodSupported(rw http.ResponseWriter, method string, supportedMethods []string) bool {
 	if method != "" && !contains(method, supportedMethods) {
 		errorResponse(rw, InvalidRequest, "Invalid code challenge method", http.StatusBadRequest)
@@ -551,6 +717,17 @@ func jsonResponse(rw http.ResponseWriter, data []byte) {
 	noCache(rw)
 	rw.Header().Set("Content-Type", applicationJSON)
 	rw.WriteHeader(http.StatusOK)
+
+	_, err := rw.Write(data)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func jsonResponseWithStatusCode(rw http.ResponseWriter, data []byte, statusCode int) {
+	noCache(rw)
+	rw.Header().Set("Content-Type", applicationJSON)
+	rw.WriteHeader(statusCode)
 
 	_, err := rw.Write(data)
 	if err != nil {

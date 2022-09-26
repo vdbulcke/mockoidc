@@ -19,9 +19,42 @@ type Session struct {
 	CodeChallengeMethod string
 }
 
+// PARSession stores PAR request
+type PARSession struct {
+	RequestID           string
+	ClientID            string `json:"client_id"`
+	ClientSecret        string `json:"client_secret"`
+	ResponseType        string `json:"response_type"`
+	RedirectURI         string `json:"redirect_uri"`
+	Scopes              string `json:"scope"`
+	Nonce               string `json:"nonce"`
+	State               string `json:"state"`
+	CodeChallenge       string `json:"code_challenge"`
+	CodeChallengeMethod string `json:"code_challenge_method"`
+	AcrValues           string `json:"acr_values"`
+}
+
+func (ps *PARSession) toMap() map[string]string {
+
+	return map[string]string{
+		"client_id":             ps.ClientID,
+		"client_secret":         ps.ClientID,
+		"response_type":         ps.ClientID,
+		"redirect_uri":          ps.ClientID,
+		"scopes":                ps.ClientID,
+		"nonce":                 ps.ClientID,
+		"code_challenge":        ps.ClientID,
+		"code_challenge_method": ps.ClientID,
+		"state":                 ps.State,
+		"acr_values":            ps.ClientID,
+	}
+
+}
+
 // SessionStore manages our Session objects
 type SessionStore struct {
 	Store     map[string]*Session
+	PARstore  map[string]*PARSession
 	CodeQueue *CodeQueue
 }
 
@@ -36,6 +69,7 @@ type IDTokenClaims struct {
 func NewSessionStore() *SessionStore {
 	return &SessionStore{
 		Store:     make(map[string]*Session),
+		PARstore:  make(map[string]*PARSession),
 		CodeQueue: &CodeQueue{},
 	}
 }
@@ -57,6 +91,34 @@ func (ss *SessionStore) NewSession(scope string, nonce string, user User, codeCh
 	}
 	ss.Store[sessionID] = session
 
+	return session, nil
+}
+
+func (ss *SessionStore) StorePARRequest(parReq *PARSession) (string, error) {
+	reqID, err := randomNonce(10)
+	if err != nil {
+		return "", err
+	}
+	parReq.RequestID = reqID
+
+	ss.PARstore[reqID] = parReq
+
+	return reqID, nil
+
+}
+
+func (ss *SessionStore) ClearCache() {
+	ss.PARstore = make(map[string]*PARSession)
+	ss.Store = make(map[string]*Session)
+}
+
+// GetSPARRequestByID looks up the PAR resuest
+func (ss *SessionStore) GetPARRequestByID(id string) (*PARSession, error) {
+	session, ok := ss.PARstore[id]
+	if !ok {
+		return nil, errors.New("PAR session not found")
+	}
+	delete(ss.PARstore, id)
 	return session, nil
 }
 
