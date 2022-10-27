@@ -62,7 +62,7 @@ type SessionStore struct {
 // should use in their jwt.Claims building.
 type IDTokenClaims struct {
 	Nonce string `json:"nonce,omitempty"`
-	*jwt.StandardClaims
+	*jwt.RegisteredClaims
 }
 
 // NewSessionStore initializes the SessionStore for this server
@@ -169,8 +169,8 @@ func (s *Session) RefreshToken(config *Config, cb CryptoBackend, now time.Time) 
 // based on the scopes set.
 func (s *Session) IDToken(config *Config, cb CryptoBackend, now time.Time) (string, error) {
 	base := &IDTokenClaims{
-		StandardClaims: s.standardClaims(config, config.AccessTTL, now),
-		Nonce:          s.OIDCNonce,
+		RegisteredClaims: s.standardClaims(config, config.AccessTTL, now),
+		Nonce:            s.OIDCNonce,
 	}
 	claims, err := s.User.Claims(s.Scopes, base)
 	if err != nil {
@@ -180,14 +180,14 @@ func (s *Session) IDToken(config *Config, cb CryptoBackend, now time.Time) (stri
 	return cb.SignJWT(claims)
 }
 
-func (s *Session) standardClaims(config *Config, ttl time.Duration, now time.Time) *jwt.StandardClaims {
-	return &jwt.StandardClaims{
-		Audience:  config.ClientID,
-		ExpiresAt: now.Add(ttl).Unix(),
-		Id:        s.SessionID,
-		IssuedAt:  now.Unix(),
+func (s *Session) standardClaims(config *Config, ttl time.Duration, now time.Time) *jwt.RegisteredClaims {
+	return &jwt.RegisteredClaims{
+		Audience:  []string{config.ClientID},
+		ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		ID:        s.SessionID,
+		IssuedAt:  jwt.NewNumericDate(now),
 		Issuer:    config.Issuer,
-		NotBefore: now.Unix(),
+		NotBefore: jwt.NewNumericDate(now),
 		Subject:   s.User.ID(),
 	}
 }

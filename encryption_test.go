@@ -19,13 +19,14 @@ const (
 )
 
 var (
-	standardClaims = &jwt.StandardClaims{
-		Audience:  audience,
-		ExpiresAt: time.Now().Add(time.Duration(1) * time.Hour).Unix(),
-		Id:        "0123456789abcdef",
-		IssuedAt:  time.Now().Unix(),
+	standardClaims = &jwt.RegisteredClaims{
+		Audience: []string{audience},
+
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(1) * time.Hour)),
+		ID:        "0123456789abcdef",
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		Issuer:    issuer,
-		NotBefore: 0,
+		NotBefore: jwt.NewNumericDate(time.Now()),
 		Subject:   "123456789",
 	}
 )

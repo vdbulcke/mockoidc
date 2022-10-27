@@ -22,8 +22,8 @@ type User interface {
 	Claims([]string, *IDTokenClaims) (jwt.Claims, error)
 
 	// Claims returns the Access Token Claims for a User
-	// It builds off the passed StandardClaims.
-	AccessTokenClaims(*jwt.StandardClaims) (jwt.Claims, error)
+	// It builds off the passed RegisteredClaims.
+	AccessTokenClaims(*jwt.RegisteredClaims) (jwt.Claims, error)
 }
 
 // MockUser is a default implementation of the User interface
@@ -102,7 +102,7 @@ func (u *MockUser) Claims(scope []string, claims *IDTokenClaims) (jwt.Claims, er
 }
 
 // AccessTokenClaims just return standard claims
-func (u *MockUser) AccessTokenClaims(claims *jwt.StandardClaims) (jwt.Claims, error) {
+func (u *MockUser) AccessTokenClaims(claims *jwt.RegisteredClaims) (jwt.Claims, error) {
 	return claims, nil
 }
 
