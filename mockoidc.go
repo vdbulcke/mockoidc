@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 // NowFunc is an overrideable version of `time.Now`. Tests that need to
@@ -32,11 +32,13 @@ type MockOIDC struct {
 
 	// Normally, these would be private. Expose them publicly for
 	// power users.
-	Server       *http.Server
-	Keypair      *Keypair
-	SessionStore *SessionStore
-	UserQueue    *UserQueue
-	ErrorQueue   *ErrorQueue
+	Server *http.Server
+	// Keypair      *Keypair
+	// a crypto backend interface
+	CryptoBackend CryptoBackend
+	SessionStore  *SessionStore
+	UserQueue     *UserQueue
+	ErrorQueue    *ErrorQueue
 
 	tlsConfig   *tls.Config
 	middleware  []func(http.Handler) http.Handler
@@ -79,10 +81,35 @@ func NewServer(key *rsa.PrivateKey) (*MockOIDC, error) {
 		AccessTTL:                     time.Duration(10) * time.Minute,
 		RefreshTTL:                    time.Duration(60) * time.Minute,
 		CodeChallengeMethodsSupported: []string{"plain", "S256"},
-		Keypair:                       keypair,
-		SessionStore:                  NewSessionStore(),
-		UserQueue:                     &UserQueue{},
-		ErrorQueue:                    &ErrorQueue{},
+		// Keypair:                       keypair,
+		CryptoBackend: NewRSAKeyPairCryptoBackend(keypair),
+		SessionStore:  NewSessionStore(),
+		UserQueue:     &UserQueue{},
+		ErrorQueue:    &ErrorQueue{},
+	}, nil
+}
+
+func NewServerWithCryptoBackend(cb CryptoBackend) (*MockOIDC, error) {
+	clientID, err := randomNonce(24)
+	if err != nil {
+		return nil, err
+	}
+	clientSecret, err := randomNonce(24)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MockOIDC{
+		ClientID:                      clientID,
+		ClientSecret:                  clientSecret,
+		AccessTTL:                     time.Duration(10) * time.Minute,
+		RefreshTTL:                    time.Duration(60) * time.Minute,
+		CodeChallengeMethodsSupported: []string{"plain", "S256"},
+		// Keypair:                       keypair,
+		CryptoBackend: cb,
+		SessionStore:  NewSessionStore(),
+		UserQueue:     &UserQueue{},
+		ErrorQueue:    &ErrorQueue{},
 	}, nil
 }
 

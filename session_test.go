@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 )
@@ -50,7 +50,8 @@ func TestSessionStore_NewSession(t *testing.T) {
 
 func TestSession_AccessToken(t *testing.T) {
 	keypair, _ := mockoidc.DefaultKeypair()
-	tokenString, err := dummySession.AccessToken(dummyConfig, keypair, mockoidc.NowFunc())
+	cb := mockoidc.NewRSAKeyPairCryptoBackend(keypair)
+	tokenString, err := dummySession.AccessToken(dummyConfig, cb, mockoidc.NowFunc())
 	assert.NoError(t, err)
 
 	token, err := keypair.VerifyJWT(tokenString)
@@ -69,10 +70,11 @@ func TestSession_AccessToken(t *testing.T) {
 
 func TestSession_RefreshToken(t *testing.T) {
 	keypair, _ := mockoidc.DefaultKeypair()
-	tokenString, err := dummySession.RefreshToken(dummyConfig, keypair, mockoidc.NowFunc())
+	cb := mockoidc.NewRSAKeyPairCryptoBackend(keypair)
+	tokenString, err := dummySession.RefreshToken(dummyConfig, cb, mockoidc.NowFunc())
 	assert.NoError(t, err)
 
-	token, err := keypair.VerifyJWT(tokenString)
+	token, err := cb.VerifyJWT(tokenString)
 	assert.NoError(t, err)
 	assert.True(t, token.Valid)
 
@@ -88,10 +90,11 @@ func TestSession_RefreshToken(t *testing.T) {
 
 func TestSession_IDToken(t *testing.T) {
 	keypair, _ := mockoidc.DefaultKeypair()
-	tokenString, err := dummySession.IDToken(dummyConfig, keypair, mockoidc.NowFunc())
+	cb := mockoidc.NewRSAKeyPairCryptoBackend(keypair)
+	tokenString, err := dummySession.IDToken(dummyConfig, cb, mockoidc.NowFunc())
 	assert.NoError(t, err)
 
-	token, err := keypair.VerifyJWT(tokenString)
+	token, err := cb.VerifyJWT(tokenString)
 	assert.NoError(t, err)
 	assert.True(t, token.Valid)
 
@@ -170,13 +173,14 @@ func TestSessionStore_GetSessionFromToken(t *testing.T) {
 	assert.NoError(t, err)
 
 	keypair, err := mockoidc.DefaultKeypair()
+	cb := mockoidc.NewRSAKeyPairCryptoBackend(keypair)
 	assert.NoError(t, err)
 
 	now := time.Now()
-	tokenString, err := s2.AccessToken(dummyConfig, keypair, now)
+	tokenString, err := s2.AccessToken(dummyConfig, cb, now)
 	assert.NoError(t, err)
 
-	token, err := keypair.VerifyJWT(tokenString)
+	token, err := cb.VerifyJWT(tokenString)
 	assert.NoError(t, err)
 
 	session, err := ss.GetSessionByToken(token)

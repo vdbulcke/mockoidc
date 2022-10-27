@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 )
@@ -122,11 +122,11 @@ func TestRun(t *testing.T) {
 	err = json.Unmarshal(body, &tokens)
 	assert.NoError(t, err)
 
-	_, err = m.Keypair.VerifyJWT(tokens["access_token"].(string))
+	_, err = m.CryptoBackend.VerifyJWT(tokens["access_token"].(string))
 	assert.NoError(t, err)
-	_, err = m.Keypair.VerifyJWT(tokens["refresh_token"].(string))
+	_, err = m.CryptoBackend.VerifyJWT(tokens["refresh_token"].(string))
 	assert.NoError(t, err)
-	idToken, err := m.Keypair.VerifyJWT(tokens["id_token"].(string))
+	idToken, err := m.CryptoBackend.VerifyJWT(tokens["id_token"].(string))
 	assert.NoError(t, err)
 
 	// The nonce we set initially is in our ID Token
@@ -184,11 +184,11 @@ func TestRun(t *testing.T) {
 	err = json.Unmarshal(refreshBody, &refreshedTokens)
 	assert.NoError(t, err)
 
-	_, err = m.Keypair.VerifyJWT(refreshedTokens["access_token"].(string))
+	_, err = m.CryptoBackend.VerifyJWT(refreshedTokens["access_token"].(string))
 	assert.NoError(t, err)
-	_, err = m.Keypair.VerifyJWT(refreshedTokens["refresh_token"].(string))
+	_, err = m.CryptoBackend.VerifyJWT(refreshedTokens["refresh_token"].(string))
 	assert.NoError(t, err)
-	refreshedIDToken, err := m.Keypair.VerifyJWT(refreshedTokens["id_token"].(string))
+	refreshedIDToken, err := m.CryptoBackend.VerifyJWT(refreshedTokens["id_token"].(string))
 	assert.NoError(t, err)
 
 	// The nonce we set initially is STILL in our ID Token

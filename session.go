@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 // Session stores a User and their OIDC options across requests
@@ -145,7 +145,7 @@ func (ss *SessionStore) GetSessionByToken(token *jwt.Token) (*Session, error) {
 
 // AccessToken returns the JWT token with the appropriate claims for
 // an access token
-func (s *Session) AccessToken(config *Config, kp *Keypair, now time.Time) (string, error) {
+func (s *Session) AccessToken(config *Config, cb CryptoBackend, now time.Time) (string, error) {
 	// get standard claims
 	standardClaims := s.standardClaims(config, config.AccessTTL, now)
 
@@ -155,19 +155,19 @@ func (s *Session) AccessToken(config *Config, kp *Keypair, now time.Time) (strin
 		return "", err
 	}
 
-	return kp.SignJWT(claims)
+	return cb.SignJWT(claims)
 }
 
 // RefreshToken returns the JWT token with the appropriate claims for
 // a refresh token
-func (s *Session) RefreshToken(config *Config, kp *Keypair, now time.Time) (string, error) {
+func (s *Session) RefreshToken(config *Config, cb CryptoBackend, now time.Time) (string, error) {
 	claims := s.standardClaims(config, config.RefreshTTL, now)
-	return kp.SignJWT(claims)
+	return cb.SignJWT(claims)
 }
 
 // IDToken returns the JWT token with the appropriate claims for a user
 // based on the scopes set.
-func (s *Session) IDToken(config *Config, kp *Keypair, now time.Time) (string, error) {
+func (s *Session) IDToken(config *Config, cb CryptoBackend, now time.Time) (string, error) {
 	base := &IDTokenClaims{
 		StandardClaims: s.standardClaims(config, config.AccessTTL, now),
 		Nonce:          s.OIDCNonce,
@@ -177,7 +177,7 @@ func (s *Session) IDToken(config *Config, kp *Keypair, now time.Time) (string, e
 		return "", err
 	}
 
-	return kp.SignJWT(claims)
+	return cb.SignJWT(claims)
 }
 
 func (s *Session) standardClaims(config *Config, ttl time.Duration, now time.Time) *jwt.StandardClaims {

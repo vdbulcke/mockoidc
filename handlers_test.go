@@ -133,7 +133,7 @@ func TestMockOIDC_Token_CodeGrant(t *testing.T) {
 		"id_token",
 	} {
 		t.Run(key, func(t *testing.T) {
-			_, err := m.Keypair.VerifyJWT(tokenResp[key].(string))
+			_, err := m.CryptoBackend.VerifyJWT(tokenResp[key].(string))
 			assert.NoError(t, err)
 		})
 	}
@@ -249,7 +249,7 @@ func TestMockOIDC_Token_RefreshGrant(t *testing.T) {
 
 	session, _ := m.SessionStore.NewSession(
 		"openid email profile", "sessionNonce", mockoidc.DefaultUser(), "", "")
-	refreshToken, _ := session.RefreshToken(m.Config(), m.Keypair, m.Now())
+	refreshToken, _ := session.RefreshToken(m.Config(), m.CryptoBackend, m.Now())
 
 	assert.HTTPError(t, m.Token, http.MethodPost, mockoidc.TokenEndpoint, nil)
 
@@ -279,14 +279,14 @@ func TestMockOIDC_Token_RefreshGrant(t *testing.T) {
 		"id_token",
 	} {
 		t.Run(key, func(t *testing.T) {
-			_, err := m.Keypair.VerifyJWT(tokenResp[key].(string))
+			_, err := m.CryptoBackend.VerifyJWT(tokenResp[key].(string))
 			assert.NoError(t, err)
 		})
 	}
 
 	// expired refresh token
 	expiredToken, err := session.RefreshToken(
-		m.Config(), m.Keypair, m.Now().Add(time.Hour*time.Duration(-24)))
+		m.Config(), m.CryptoBackend, m.Now().Add(time.Hour*time.Duration(-24)))
 	assert.NoError(t, err)
 
 	data.Set("refresh_token", expiredToken)

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 const (
@@ -77,8 +77,10 @@ type PARResponse struct {
 }
 
 // PAR handles Pushed Authorization Request
-//     stores PAR request in session store for later use on
-//     the authorization endpoint
+//
+//	stores PAR request in session store for later use on
+//	the authorization endpoint
+//
 // returns a request_uri and expiration
 func (m *MockOIDC) PAR(rw http.ResponseWriter, req *http.Request) {
 
@@ -124,7 +126,9 @@ func (m *MockOIDC) PAR(rw http.ResponseWriter, req *http.Request) {
 
 // Authorize implements the `authorization_endpoint` in the OIDC flow.
 // if request_contains 'request_uri' then looks up PAR request from session store
-//    and ignores all other parameters
+//
+//	and ignores all other parameters
+//
 // else handles all authorization parameters directly.
 // It is the initial request that "authenticates" a user in the OAuth2
 // flow and redirects the client to the application `redirect_uri`.
@@ -483,18 +487,18 @@ func (m *MockOIDC) validateRefreshGrant(rw http.ResponseWriter, req *http.Reques
 
 func (m *MockOIDC) setTokens(tr *tokenResponse, s *Session, grantType string) error {
 	var err error
-	tr.AccessToken, err = s.AccessToken(m.Config(), m.Keypair, m.Now())
+	tr.AccessToken, err = s.AccessToken(m.Config(), m.CryptoBackend, m.Now())
 	if err != nil {
 		return err
 	}
 	if len(s.Scopes) > 0 && s.Scopes[0] == openidScope {
-		tr.IDToken, err = s.IDToken(m.Config(), m.Keypair, m.Now())
+		tr.IDToken, err = s.IDToken(m.Config(), m.CryptoBackend, m.Now())
 		if err != nil {
 			return err
 		}
 	}
 	if grantType != "refresh_token" {
-		tr.RefreshToken, err = s.RefreshToken(m.Config(), m.Keypair, m.Now())
+		tr.RefreshToken, err = s.RefreshToken(m.Config(), m.CryptoBackend, m.Now())
 		if err != nil {
 			return err
 		}
@@ -576,7 +580,7 @@ func (m *MockOIDC) Discovery(rw http.ResponseWriter, _ *http.Request) {
 // JWKS returns the public key in JWKS format to verify in tokens
 // signed with our Keypair.PrivateKey.
 func (m *MockOIDC) JWKS(rw http.ResponseWriter, _ *http.Request) {
-	jwks, err := m.Keypair.JWKS()
+	jwks, err := m.CryptoBackend.JWKS()
 	if err != nil {
 		internalServerError(rw, err.Error())
 		return
@@ -598,7 +602,7 @@ func (m *MockOIDC) authorizeBearer(rw http.ResponseWriter, req *http.Request) (*
 }
 
 func (m *MockOIDC) authorizeToken(t string, rw http.ResponseWriter) (*jwt.Token, bool) {
-	token, err := m.Keypair.VerifyJWT(t)
+	token, err := m.CryptoBackend.VerifyJWT(t)
 	if err != nil {
 		errorResponse(rw, InvalidRequest, fmt.Sprintf("Invalid token: %v", err), http.StatusUnauthorized)
 		return nil, false
