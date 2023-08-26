@@ -35,10 +35,12 @@ type MockOIDC struct {
 	Server *http.Server
 	// Keypair      *Keypair
 	// a crypto backend interface
-	CryptoBackend CryptoBackend
-	SessionStore  *SessionStore
-	UserQueue     *UserQueue
-	ErrorQueue    *ErrorQueue
+	CryptoBackend                      CryptoBackend
+	IssueNewRefreshTokenOnRefreshToken bool
+
+	SessionStore *SessionStore
+	UserQueue    *UserQueue
+	ErrorQueue   *ErrorQueue
 
 	tlsConfig   *tls.Config
 	middleware  []func(http.Handler) http.Handler
@@ -82,10 +84,11 @@ func NewServer(key *rsa.PrivateKey) (*MockOIDC, error) {
 		RefreshTTL:                    time.Duration(60) * time.Minute,
 		CodeChallengeMethodsSupported: []string{"plain", "S256"},
 		// Keypair:                       keypair,
-		CryptoBackend: NewRSAKeyPairCryptoBackend(keypair),
-		SessionStore:  NewSessionStore(),
-		UserQueue:     &UserQueue{},
-		ErrorQueue:    &ErrorQueue{},
+		CryptoBackend:                      NewRSAKeyPairCryptoBackend(keypair),
+		IssueNewRefreshTokenOnRefreshToken: false,
+		SessionStore:                       NewSessionStore(),
+		UserQueue:                          &UserQueue{},
+		ErrorQueue:                         &ErrorQueue{},
 	}, nil
 }
 
@@ -106,11 +109,24 @@ func NewServerWithCryptoBackend(cb CryptoBackend) (*MockOIDC, error) {
 		RefreshTTL:                    time.Duration(60) * time.Minute,
 		CodeChallengeMethodsSupported: []string{"plain", "S256"},
 		// Keypair:                       keypair,
-		CryptoBackend: cb,
-		SessionStore:  NewSessionStore(),
-		UserQueue:     &UserQueue{},
-		ErrorQueue:    &ErrorQueue{},
+		CryptoBackend:                      cb,
+		IssueNewRefreshTokenOnRefreshToken: false,
+		SessionStore:                       NewSessionStore(),
+		UserQueue:                          &UserQueue{},
+		ErrorQueue:                         &ErrorQueue{},
 	}, nil
+}
+
+func (m *MockOIDC) EnableIssueNewRefreshTokenOnRefreshToken() {
+	m.IssueNewRefreshTokenOnRefreshToken = true
+}
+
+func (m *MockOIDC) SetAccessTokenTLL(t time.Duration) {
+	m.AccessTTL = t
+}
+
+func (m *MockOIDC) SetRefreshTokenTLL(t time.Duration) {
+	m.RefreshTTL = t
 }
 
 // Run creates a default MockOIDC server and starts it

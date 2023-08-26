@@ -29,7 +29,7 @@ const (
 	//UnauthorizedClient = "unauthorized_client"
 	InternalServerError = "internal_server_error"
 
-	applicationJSON = "application/json"
+	applicationJSON = "application/json; charset=utf-8"
 	openidScope     = "openid"
 )
 
@@ -497,7 +497,10 @@ func (m *MockOIDC) setTokens(tr *tokenResponse, s *Session, grantType string) er
 			return err
 		}
 	}
-	if grantType != "refresh_token" {
+
+	// if IssueNewRefreshTokenOnRefreshToken => always generate a new refresh token
+	// else only generate a new refresh token for grantType other than refresh_token
+	if m.IssueNewRefreshTokenOnRefreshToken || grantType != "refresh_token" {
 		tr.RefreshToken, err = s.RefreshToken(m.Config(), m.CryptoBackend, m.Now())
 		if err != nil {
 			return err

@@ -161,7 +161,15 @@ func (s *Session) AccessToken(config *Config, cb CryptoBackend, now time.Time) (
 // RefreshToken returns the JWT token with the appropriate claims for
 // a refresh token
 func (s *Session) RefreshToken(config *Config, cb CryptoBackend, now time.Time) (string, error) {
-	claims := s.standardClaims(config, config.RefreshTTL, now)
+	// get standard claims
+	standardClaims := s.standardClaims(config, config.AccessTTL, now)
+
+	// add user specific Access token claims
+	claims, err := s.User.RefreshTokenClaims(standardClaims)
+	if err != nil {
+		return "", err
+	}
+
 	return cb.SignJWT(claims)
 }
 
