@@ -38,6 +38,7 @@ var (
 	GrantTypesSupported = []string{
 		"authorization_code",
 		"refresh_token",
+		"client_credentials",
 	}
 	ResponseTypesSupported = []string{
 		"code",
@@ -280,6 +281,22 @@ func (m *MockOIDC) Token(rw http.ResponseWriter, req *http.Request) {
 		if session, valid = m.validateRefreshGrant(rw, req); !valid {
 			return
 		}
+	case "client_credentials":
+
+		scope := req.Form.Get("scope")
+		// create a dummy session
+		session, err = m.SessionStore.NewSession(
+			scope,
+			"",
+			m.UserQueue.Pop(),
+			"",
+			"",
+		)
+		if err != nil {
+			internalServerError(rw, err.Error())
+			return
+		}
+
 	default:
 		errorResponse(rw, InvalidRequest,
 			fmt.Sprintf("Invalid grant type: %s", grantType), http.StatusBadRequest)
