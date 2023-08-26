@@ -159,6 +159,7 @@ func (m *MockOIDC) Start(ln net.Listener, cfg *tls.Config) error {
 	handler.Handle(AuthorizationEndpoint, m.chainMiddleware(m.Authorize))
 	handler.Handle(PushedAuthorizationRequestEndpoint, m.chainMiddleware(m.PAR))
 	handler.Handle(TokenEndpoint, m.chainMiddleware(m.Token))
+	handler.Handle(IntrospectEndpoint, m.chainMiddleware(m.Instrospect))
 	handler.Handle(UserinfoEndpoint, m.chainMiddleware(m.Userinfo))
 	handler.Handle(JWKSEndpoint, m.chainMiddleware(m.JWKS))
 	handler.Handle(DiscoveryEndpoint, m.chainMiddleware(m.Discovery))
@@ -337,6 +338,20 @@ func (m *MockOIDC) TokenEndpoint() string {
 	}
 
 	return m.Addr() + TokenEndpoint
+}
+
+// IntrospectEndpoint returns the OIDC `introspection_endpoint`
+func (m *MockOIDC) IntrospectEndpoint() string {
+	if m.Server == nil {
+		return ""
+	}
+
+	// Generate the Issue from IssuerBaseUrl
+	if m.IssuerBaseUrl != "" {
+		return m.IssuerBaseUrl + IntrospectEndpoint
+	}
+
+	return m.Addr() + IntrospectEndpoint
 }
 
 // UserinfoEndpoint returns the OIDC `userinfo_endpoint`

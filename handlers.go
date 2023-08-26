@@ -15,6 +15,7 @@ import (
 const (
 	IssuerBase                         = "/oidc"
 	AuthorizationEndpoint              = "/oidc/authorize"
+	IntrospectEndpoint                 = "/oidc/introspect"
 	PushedAuthorizationRequestEndpoint = "/oidc/par"
 	TokenEndpoint                      = "/oidc/token"
 	UserinfoEndpoint                   = "/oidc/userinfo"
@@ -305,6 +306,50 @@ func (m *MockOIDC) Token(rw http.ResponseWriter, req *http.Request) {
 	jsonResponse(rw, resp)
 }
 
+// Instrospect Implements token introspection endpoints
+// Referene: https://www.rfc-editor.org/rfc/rfc7662.html
+func (m *MockOIDC) Instrospect(rw http.ResponseWriter, req *http.Request) {
+	err := req.ParseForm()
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	// validate token param
+	if !m.validateMandatoryIntrospectParams(rw, req) {
+		return
+	}
+
+	t := req.Form.Get("token")
+
+	// WARNING: Don't do this in prod,
+	//          decode jwt without checking signature
+	parser := jwt.NewParser()
+	token, _, err := parser.ParseUnverified(t, jwt.MapClaims{})
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	// cast claims interface as MapClaims
+	tokenClaims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		internalServerError(rw, "invalid claims format")
+		return
+	}
+
+	// set introspect standard properties
+	tokenClaims["active"] = true
+
+	resp, err := json.Marshal(tokenClaims)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+	noCache(rw)
+	jsonResponse(rw, resp)
+}
+
 func (m *MockOIDC) AdminClearCache(rw http.ResponseWriter, req *http.Request) {
 	m.SessionStore.ClearCache()
 	rw.Header().Set("X-Status", "cache-cleared")
@@ -342,6 +387,17 @@ func (m *MockOIDC) validateMandatoryTokenParams(rw http.ResponseWriter, req *htt
 	equal := assertEqual("client_id", m.ClientID,
 		InvalidClient, "Invalid client id", rw, req)
 	if !equal {
+		return false
+	}
+
+	return true
+}
+
+// validateMandatoryIntrospectParams mandatory paramaters
+// for introspect endpoint
+func (m *MockOIDC) validateMandatoryIntrospectParams(rw http.ResponseWriter, req *http.Request) bool {
+
+	if !assertPresence([]string{"token"}, rw, req) {
 		return false
 	}
 
@@ -540,6 +596,7 @@ type discoveryResponse struct {
 	TokenEndpoint                      string `json:"token_endpoint"`
 	JWKSUri                            string `json:"jwks_uri"`
 	UserinfoEndpoint                   string `json:"userinfo_endpoint"`
+	IntrospectEndpoint                 string `json:"introspection_endpoint"`
 
 	GrantTypesSupported               []string `json:"grant_types_supported"`
 	ResponseTypesSupported            []string `json:"response_types_supported"`
@@ -561,6 +618,7 @@ func (m *MockOIDC) Discovery(rw http.ResponseWriter, _ *http.Request) {
 		JWKSUri:                            m.JWKSEndpoint(),
 		UserinfoEndpoint:                   m.UserinfoEndpoint(),
 		PushedAuthorizationRequestEndpoint: m.PushedAuthorizationRequestEndpoint(),
+		IntrospectEndpoint:                 m.IntrospectEndpoint(),
 
 		GrantTypesSupported:               GrantTypesSupported,
 		ResponseTypesSupported:            ResponseTypesSupported,
