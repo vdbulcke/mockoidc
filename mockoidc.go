@@ -37,6 +37,7 @@ type MockOIDC struct {
 	// a crypto backend interface
 	CryptoBackend                      CryptoBackend
 	IssueNewRefreshTokenOnRefreshToken bool
+	IntrospectTemplate                 map[string]interface{}
 
 	SessionStore *SessionStore
 	UserQueue    *UserQueue
@@ -127,6 +128,10 @@ func (m *MockOIDC) SetAccessTokenTLL(t time.Duration) {
 
 func (m *MockOIDC) SetRefreshTokenTLL(t time.Duration) {
 	m.RefreshTTL = t
+}
+
+func (m *MockOIDC) SetIntrospectTemplate(t map[string]interface{}) {
+	m.IntrospectTemplate = t
 }
 
 // Run creates a default MockOIDC server and starts it

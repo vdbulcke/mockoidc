@@ -1,13 +1,14 @@
 package mockoidc
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
+	"text/template"
 
 	"github.com/golang-jwt/jwt/v4"
 )
@@ -225,11 +226,11 @@ func (m *MockOIDC) Authorize(rw http.ResponseWriter, req *http.Request) {
 }
 
 type tokenResponse struct {
-	AccessToken  string        `json:"access_token,omitempty"`
-	RefreshToken string        `json:"refresh_token,omitempty"`
-	IDToken      string        `json:"id_token,omitempty"`
-	TokenType    string        `json:"token_type"`
-	ExpiresIn    time.Duration `json:"expires_in"`
+	AccessToken  string `json:"access_token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	IDToken      string `json:"id_token,omitempty"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
 }
 
 // Token implements the `token_endpoint` in OIDC and responds to requests
@@ -306,7 +307,7 @@ func (m *MockOIDC) Token(rw http.ResponseWriter, req *http.Request) {
 	tr := &tokenResponse{
 		RefreshToken: req.Form.Get("refresh_token"),
 		TokenType:    "bearer",
-		ExpiresIn:    m.AccessTTL,
+		ExpiresIn:    int(m.AccessTTL.Seconds()),
 	}
 	err = m.setTokens(tr, session, grantType)
 	if err != nil {
@@ -358,6 +359,24 @@ func (m *MockOIDC) Instrospect(rw http.ResponseWriter, req *http.Request) {
 	// set introspect standard properties
 	tokenClaims["active"] = true
 
+	for k, v := range m.IntrospectTemplate {
+
+		// template only works for string
+		tpl, ok := v.(string)
+		if ok {
+			value, err := m.templateClaims(tpl, (*map[string]interface{})(&tokenClaims))
+			if err != nil {
+				internalServerError(rw, err.Error())
+				return
+			}
+
+			tokenClaims[k] = value
+		} else {
+			tokenClaims[k] = v
+		}
+
+	}
+
 	resp, err := json.Marshal(tokenClaims)
 	if err != nil {
 		internalServerError(rw, err.Error())
@@ -365,6 +384,24 @@ func (m *MockOIDC) Instrospect(rw http.ResponseWriter, req *http.Request) {
 	}
 	noCache(rw)
 	jsonResponse(rw, resp)
+}
+
+// templateClaims takes tpl go tempate and claims map and input
+// returns templated string or an error
+func (m *MockOIDC) templateClaims(tpl string, claims *map[string]interface{}) (string, error) {
+	var out bytes.Buffer
+
+	t, err := template.New("introspect").Parse(tpl)
+	if err != nil {
+		return "", err
+	}
+
+	err = t.Execute(&out, claims)
+	if err != nil {
+		return "", err
+	}
+
+	return out.String(), nil
 }
 
 func (m *MockOIDC) AdminClearCache(rw http.ResponseWriter, req *http.Request) {
