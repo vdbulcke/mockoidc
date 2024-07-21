@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -86,6 +87,20 @@ type PARResponse struct {
 //
 // returns a request_uri and expiration
 func (m *MockOIDC) PAR(rw http.ResponseWriter, req *http.Request) {
+	header := req.Header.Get("Content-Type")
+	ct, _, err := mime.ParseMediaType(header)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+	if ct == "application/json" {
+		m.jsonPARHandler(rw, req)
+	} else {
+		m.urlencodePARHandler(rw, req)
+	}
+}
+
+func (m *MockOIDC) jsonPARHandler(rw http.ResponseWriter, req *http.Request) {
 
 	// parse PAR request
 	body := req.Body
@@ -125,6 +140,104 @@ func (m *MockOIDC) PAR(rw http.ResponseWriter, req *http.Request) {
 	// PAR Response MUST be 201
 	jsonResponseWithStatusCode(rw, resp, http.StatusCreated)
 
+}
+
+func (m *MockOIDC) urlencodePARHandler(rw http.ResponseWriter, req *http.Request) {
+
+	err := req.ParseForm()
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	parReq := m.getPARSessionFromReq(req)
+	// validate Request
+	if !m.validPARRequest(rw, parReq) {
+		return
+	}
+
+	reqID, err := m.SessionStore.StorePARRequest(parReq)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	parResp := &PARResponse{
+		RequestUri: reqID,
+		ExpiresIn:  120,
+	}
+
+	resp, err := json.Marshal(parResp)
+	if err != nil {
+		internalServerError(rw, err.Error())
+		return
+	}
+
+	noCache(rw)
+	// PAR Response MUST be 201
+	jsonResponseWithStatusCode(rw, resp, http.StatusCreated)
+
+}
+func (m *MockOIDC) getPARSessionFromReq(req *http.Request) *PARSession {
+
+	parReq := &PARSession{}
+
+	v := req.Form.Get("client_id")
+	if v != "" {
+		parReq.ClientID = v
+	}
+
+	v = req.Form.Get("client_secret")
+	if v != "" {
+		parReq.ClientSecret = v
+	}
+
+	v = req.Form.Get("response_type")
+	if v != "" {
+		parReq.ResponseType = v
+	}
+
+	v = req.Form.Get("redirect_uri")
+	if v != "" {
+		parReq.RedirectURI = v
+	}
+
+	v = req.Form.Get("scope")
+	if v != "" {
+		parReq.Scopes = v
+	}
+
+	v = req.Form.Get("nonce")
+	if v != "" {
+		parReq.Nonce = v
+	}
+
+	v = req.Form.Get("state")
+	if v != "" {
+		parReq.State = v
+	}
+
+	v = req.Form.Get("code_challenge")
+	if v != "" {
+		parReq.CodeChallenge = v
+	}
+
+	v = req.Form.Get("code_challenge_method")
+	if v != "" {
+		parReq.CodeChallengeMethod = v
+	}
+
+	v = req.Form.Get("code_challenge_method")
+	if v != "" {
+		parReq.CodeChallengeMethod = v
+	}
+
+	v = req.Form.Get("acr_values")
+	if v != "" {
+		parReq.AcrValues = v
+	}
+
+	return parReq
 }
 
 // Authorize implements the `authorization_endpoint` in the OIDC flow.
@@ -434,15 +547,15 @@ func (m *MockOIDC) validateTokenParams(rw http.ResponseWriter, req *http.Request
 // PKCE and refresh_token flow do NOT require a client_secret
 func (m *MockOIDC) validateMandatoryTokenParams(rw http.ResponseWriter, req *http.Request) bool {
 
-	if !assertPresence([]string{"client_id", "grant_type"}, rw, req) {
+	if !assertPresence([]string{"grant_type"}, rw, req) {
 		return false
 	}
 
-	equal := assertEqual("client_id", m.ClientID,
-		InvalidClient, "Invalid client id", rw, req)
-	if !equal {
-		return false
-	}
+	// equal := assertEqual("client_id", m.ClientID,
+	// 	InvalidClient, "Invalid client id", rw, req)
+	// if !equal {
+	// 	return false
+	// }
 
 	return true
 }
